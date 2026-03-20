@@ -1,0 +1,25 @@
+{
+  "run_id": "a1b2c3d4-...",
+  "started_at": "2026-03-19T09:00:00Z",
+  "finished_at": "2026-03-19T09:00:01Z",
+  "checkpoint_before": "2026-03-16T00:00:00Z",
+  "checkpoint_after": "2026-03-19T09:00:00Z",
+  "status": "COMPLETED",
+  "customers": {
+    "delta_row_count": 5,
+    "schema_fingerprint": "a3f2b8c1d9...",
+    "lake_paths": [
+      "lake/customers/date=2026-03-17/data.jsonl",
+      "lake/customers/date=2026-03-19/data.jsonl"
+    ]
+  },
+  "cases": {
+    "delta_row_count": 12,
+    "schema_fingerprint": "d7e9f4a02b...",
+    "lake_paths": [
+      "lake/cases/date=2026-03-17/data.jsonl",
+      "lake/cases/date=2026-03-18/data.jsonl",
+      "lake/cases/date=2026-03-19/data.jsonl"
+    ]
+  }
+}

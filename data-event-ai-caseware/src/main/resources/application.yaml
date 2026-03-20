@@ -5,15 +5,26 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: jdbc:postgresql://postgres:5432/interop
+    url: jdbc:postgresql://localhost:5432/interop
     username: interop
     password: interop
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+caseware:
+  schema:
+    fingerprint:
+      customers: "3fda1462b573d1b21d6b3a853a5311828f5a16dd72d912e29c1bc5d8c63ff0ad"
+      cases: "001a11d0b0167f2a482c7300d68cdeb7a0fc8a0c16e76c877225514e791f70e5"
+  path:
+    lakeOutputFilename: "data.jsonl"
+    checkpoint: "./state/checkpoint.json"
+    customers-lake: "./lake/customers/"
+    cases-lake: "./lake/cases/"
+    events-lake: "./events/events.jsonl"
