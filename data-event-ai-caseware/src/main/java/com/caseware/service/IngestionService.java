@@ -1,5 +1,6 @@
 package com.caseware.service;
 
+import com.caseware.client.SearchClient;
 import com.caseware.dto.Checkpoint;
 import com.caseware.dto.IngestionManifest;
 import com.caseware.dto.IngestionStatus;
@@ -26,6 +27,7 @@ public class IngestionService {
     private final LakeHandler lakeHandler;
     private final CustomerRepository customerRepository;
     private final CaseRepository caseRepository;
+    private final SearchClient searchClient;
 
     @Value("${caseware.schema.fingerprint.cases}")
     private String fingerprintCases;
@@ -35,10 +37,12 @@ public class IngestionService {
 
     public IngestionService(LakeHandler lakeHandler,
                             CustomerRepository customerRepository,
-                            CaseRepository caseRepository) {
+                            CaseRepository caseRepository,
+                            SearchClient searchClient) {
         this.lakeHandler = lakeHandler;
         this.customerRepository = customerRepository;
         this.caseRepository = caseRepository;
+        this.searchClient = searchClient;
     }
 
 
@@ -73,6 +77,9 @@ public class IngestionService {
 
             //Write events before return
             lakeHandler.writeEvents(ingestionManifest);
+
+            //Trigger ranker index rebuild (async, best-effort)
+            searchClient.refreshIndex();
 
             return ingestionManifest;
 

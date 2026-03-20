@@ -28,3 +28,5 @@ caseware:
     customers-lake: "./lake/customers"
     cases-lake: "./lake/cases"
     events-lake: "./events/events.jsonl"
+ranker:
+  url: ${RANKER_URL:http://localhost:8000}
