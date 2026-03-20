@@ -8,7 +8,6 @@ import com.caseware.model.Customer;
 import com.caseware.repository.CaseRepository;
 import com.caseware.repository.CustomerRepository;
 import com.caseware.service.handler.LakeHandler;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -24,20 +23,23 @@ import java.util.UUID;
 @Service
 public class IngestionService {
 
-    @Autowired
-    private LakeHandler lakeHandler;
-
-    @Autowired
-    private CustomerRepository customerRepository;
-
-    @Autowired
-    private CaseRepository caseRepository;
+    private final LakeHandler lakeHandler;
+    private final CustomerRepository customerRepository;
+    private final CaseRepository caseRepository;
 
     @Value("${caseware.schema.fingerprint.cases}")
     private String fingerprintCases;
 
     @Value("${caseware.schema.fingerprint.customers}")
     private String fingerprintCustomers;
+
+    public IngestionService(LakeHandler lakeHandler,
+                            CustomerRepository customerRepository,
+                            CaseRepository caseRepository) {
+        this.lakeHandler = lakeHandler;
+        this.customerRepository = customerRepository;
+        this.caseRepository = caseRepository;
+    }
 
 
     public IngestionManifest process(Boolean dryRun){

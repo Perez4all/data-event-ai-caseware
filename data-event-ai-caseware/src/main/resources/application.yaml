@@ -25,6 +25,6 @@ caseware:
   path:
     lakeOutputFilename: "data.jsonl"
     checkpoint: "./state/checkpoint.json"
-    customers-lake: "./lake/customers/"
-    cases-lake: "./lake/cases/"
+    customers-lake: "./lake/customers"
+    cases-lake: "./lake/cases"
     events-lake: "./events/events.jsonl"

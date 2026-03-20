@@ -12,7 +12,6 @@ import com.caseware.util.HashUtil;
 import com.caseware.util.JsonUtil;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -21,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -56,11 +56,14 @@ public class LakeHandler {
     @Value("${caseware.path.events-lake}")
     private String eventsPath;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
+
+    public LakeHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @PostConstruct
-    public void initialize(){
+    public void initialize() throws IOException {
         String casesHash = HashUtil.schemaFingerprint(Cases.class);
         String customerHash = HashUtil.schemaFingerprint(Customer.class);
         log.info(String.format("CASES SCHEMA FINGERPRINT %s <--> %s", casesHash, fingerprintCases));
@@ -73,6 +76,14 @@ public class LakeHandler {
         if(!customerHash.equalsIgnoreCase(fingerprintCustomers)){
             throw new FingerprintSchemaNotValidException("CUSTOMER SCHEMA FINGERPRINT DOES NOT MATCH, PLEASE FIX TO PROVIDE DATA INTEGRITY");
         }
+
+        try {
+            Files.createDirectories(Path.of(checkPointPath).getParent());
+            Files.createDirectories(Path.of(eventsPath).getParent());
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+
     }
 
     public Checkpoint readCheckPoint(){
@@ -81,7 +92,7 @@ public class LakeHandler {
     }
 
     public Checkpoint writeCheckPoint(){
-        Checkpoint checkpoint = new Checkpoint(OffsetDateTime.now());
+        Checkpoint checkpoint = new Checkpoint(OffsetDateTime.now(ZoneOffset.UTC));
         try {
             Files.writeString(Path.of(checkPointPath), objectMapper.writeValueAsString(checkpoint));
         } catch (IOException e) {
@@ -95,18 +106,18 @@ public class LakeHandler {
 
         String customerOutputPath = customerLakePath + "/%s/" +  lakeOutputFilename;
         Map<String, String> customersByDate = customers.stream().collect(Collectors
-                .groupingBy(customer -> String.format(customer.getUpdatedAt().toLocalDate().toString(), customerOutputPath),
+                .groupingBy(customer -> String.format(customerOutputPath, customer.getUpdatedAt().toLocalDate().toString()),
                         LinkedHashMap::new, Collectors.mapping(c -> CustomerDTO.from(c).toString(),
                                 Collectors.joining("\n", "", "\n"))));
 
         String casesOutputPath = caseLakePath + "/%s/" +  lakeOutputFilename;
         Map<String, String> casesByDate = cases.stream().collect(Collectors
-                .groupingBy(cs -> String.format(cs.getUpdatedAt().toLocalDate().toString(), casesOutputPath),
+                .groupingBy(cs -> String.format(casesOutputPath, cs.getUpdatedAt().toLocalDate().toString()),
                         LinkedHashMap::new, Collectors.mapping(cs -> CasesDTO.from(cs).toString(),
                                 Collectors.joining("\n", "", "\n"))));
 
-        IngestionManifest.TableManifest customerTableManifest = writeToDataLake(customersByDate, fingerprintCustomers);
-        IngestionManifest.TableManifest casesTableManifest = writeToDataLake(casesByDate, fingerprintCases);
+        IngestionManifest.TableManifest customerTableManifest = writeToDataLake(customersByDate, fingerprintCustomers, customers.size());
+        IngestionManifest.TableManifest casesTableManifest = writeToDataLake(casesByDate, fingerprintCases, cases.size());
 
         return new IngestionManifest.TableManifest[]{customerTableManifest, casesTableManifest};
 
@@ -120,12 +131,14 @@ public class LakeHandler {
         EventDTO eventCustomersDTO = new EventDTO(ingestionManifest.runId(), customersManifest.schemaFingerprint(), customersManifest.deltaRowCount(),
                 customersManifest.lakePaths(), ingestionManifest.checkpointAfter());
 
-        IngestionManifest.TableManifest casesManifest = ingestionManifest.customers();
+        IngestionManifest.TableManifest casesManifest = ingestionManifest.cases();
         EventDTO eventCasesDTO = new EventDTO(ingestionManifest.runId(), casesManifest.schemaFingerprint(), casesManifest.deltaRowCount(),
                 casesManifest.lakePaths(), ingestionManifest.checkpointAfter());
         try {
 
+
             Path eventsRoute = Path.of(eventsPath);
+            Files.createDirectories(eventsRoute.getParent());
             String customerEventData = objectMapper.writeValueAsString(eventCustomersDTO);
             String casesEventData = objectMapper.writeValueAsString(eventCasesDTO);
 
@@ -135,8 +148,8 @@ public class LakeHandler {
             log.info("--- NEW CASES DATA LAKE WRITTEN ---");
             log.info(casesEventData);
 
-            Files.writeString(eventsRoute, customerEventData, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            Files.writeString(eventsRoute, casesEventData, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            Files.writeString(eventsRoute, customerEventData + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            Files.writeString(eventsRoute, casesEventData + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -144,17 +157,23 @@ public class LakeHandler {
 
     }
 
-    private IngestionManifest.TableManifest writeToDataLake(Map<String, String> lakeJsonsByDatePath, String schemaFingerprint){
+    private IngestionManifest.TableManifest writeToDataLake(Map<String, String> lakeJsonsByDatePath, String schemaFingerprint, int rowCount){
         lakeJsonsByDatePath.forEach((datePath, jsonData) -> {
             try {
-                Files.writeString(Path.of(datePath), jsonData);
+                Path path = Path.of(datePath);
+                log.debug("LAKE PATH " + datePath);
+                Files.createDirectories(path.getParent());
+                Path tmp = Path.of(datePath + ".tmp");
+                Files.writeString(tmp, jsonData);
+                //Move atomically to avoid that readings could lead to half-written files, and replace if already exists
+                Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         });
-        return new IngestionManifest.TableManifest(lakeJsonsByDatePath.size(), lakeJsonsByDatePath.keySet().stream().
+        return new IngestionManifest.TableManifest(rowCount, lakeJsonsByDatePath.keySet().stream().
                 toList(), schemaFingerprint);
     }
-
 
 }
