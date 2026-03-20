@@ -2,6 +2,7 @@ package com.caseware.service;
 
 import com.caseware.dto.Checkpoint;
 import com.caseware.dto.IngestionManifest;
+import com.caseware.client.SearchClient;
 import com.caseware.model.Cases;
 import com.caseware.model.Customer;
 import com.caseware.repository.CaseRepository;
@@ -33,6 +34,9 @@ class IngestionServiceTest {
 
     @Mock
     private CaseRepository caseRepository;
+
+    @Mock
+    private SearchClient searchClient;
 
     @InjectMocks
     private IngestionService ingestionService;

@@ -15,7 +15,10 @@ public final class JsonUtil {
     @SneakyThrows
     public static <T> Optional<T> readJson(String path, Class<T> clazz){
         Path targetPath = Path.of(path);
-        Files.createDirectories(targetPath.getParent());
+        Path parent = targetPath.getParent();
+        if (parent != null && !Files.exists(parent)) {
+            Files.createDirectories(parent);
+        }
         log.info(targetPath.toString());
         if (!Files.exists(targetPath)) {
             return Optional.empty();

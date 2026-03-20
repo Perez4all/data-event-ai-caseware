@@ -20,11 +20,22 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/interop
       RANKER_URL: http://ranker:8000
     volumes:
-      - ./state:/app/state
-      - ./lake:/app/lake
-      - ./events:/app/events
+      - lake:/app/lake
+      - state:/app/state
+      - events:/app/events
 
   ranker:
     build: ./data-event-ai-ranker
     ports:
       - "8000:8000"
+    environment:
+      LAKE_CASES_PATH: /app/lake/cases
+    volumes:
+      - lake:/app/lake
+    depends_on:
+      - app
+
+volumes:
+  lake:
+  state:
+  events:

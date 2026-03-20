@@ -78,8 +78,16 @@ public class LakeHandler {
         }
 
         try {
-            Files.createDirectories(Path.of(checkPointPath).getParent());
-            Files.createDirectories(Path.of(eventsPath).getParent());
+            Path checkpointParent = Path.of(checkPointPath).getParent();
+            Path eventsParent = Path.of(eventsPath).getParent();
+            if (checkpointParent != null && !Files.exists(checkpointParent)) {
+                Files.createDirectories(checkpointParent);
+            }
+            if (eventsParent != null && !Files.exists(eventsParent)) {
+                Files.createDirectories(eventsParent);
+            }
+            Files.createDirectories(Path.of(customerLakePath));
+            Files.createDirectories(Path.of(caseLakePath));
         } catch (IOException e) {
             log.error(e.getMessage());
         }
@@ -138,7 +146,10 @@ public class LakeHandler {
 
 
             Path eventsRoute = Path.of(eventsPath);
-            Files.createDirectories(eventsRoute.getParent());
+            Path eventsParent = eventsRoute.getParent();
+            if (eventsParent != null && !Files.exists(eventsParent)) {
+                Files.createDirectories(eventsParent);
+            }
             String customerEventData = objectMapper.writeValueAsString(eventCustomersDTO);
             String casesEventData = objectMapper.writeValueAsString(eventCasesDTO);
 
@@ -160,10 +171,10 @@ public class LakeHandler {
     private IngestionManifest.TableManifest writeToDataLake(Map<String, String> lakeJsonsByDatePath, String schemaFingerprint, int rowCount){
         lakeJsonsByDatePath.forEach((datePath, jsonData) -> {
             try {
-                Path path = Path.of(datePath);
-                log.debug("LAKE PATH " + datePath);
+                Path path = Path.of(datePath).normalize();
+                log.debug("LAKE PATH " + path);
                 Files.createDirectories(path.getParent());
-                Path tmp = Path.of(datePath + ".tmp");
+                Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
                 Files.writeString(tmp, jsonData);
                 //Move atomically to avoid that readings could lead to half-written files, and replace if already exists
                 Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE,
