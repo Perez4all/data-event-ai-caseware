@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: data-event-ai-caseware
+  threads:
+    virtual:
+      enabled: true
