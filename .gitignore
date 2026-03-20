@@ -86,5 +86,7 @@ node_modules/
 *.md
 !README.md
 !**/README.md
+!AI_USAGE.md
+!**/AI_USAGE.md
 
 caseware.pdf

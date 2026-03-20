@@ -106,3 +106,167 @@ The local app is not built for production scale, but the stack choices **connect
 | PII / SOC2 / GDPR | Standard Spring Security + JPA audit logging |
 
 Production scaling strategy (S3, SQS, ECS, OpenSearch, KMS) is documented separately in `ARCHITECTURE_AWS.md`.
+
+---
+
+## Prerequisites
+
+- **Docker** and **Docker Compose** (v2+)
+- **Java 21** (only if running tests outside Docker)
+- **Maven 3.9+** (or use the included `mvnw` wrapper)
+- **Python 3.13+** and **Poetry** (only if running ranker tests locally)
+
+---
+
+## How to Run
+
+### Start everything (DB + App + Ranker)
+
+```bash
+docker compose up --build
+```
+
+This starts:
+- **PostgreSQL 16** on port `5432` (seeded via `db/init.sql`)
+- **Spring Boot app** on port `8080`
+- **Python ranker** on port `8000`
+
+### Start only the database
+
+```bash
+docker compose up postgres
+```
+
+### Apply the change script (between ingestion runs)
+
+```bash
+cat db/changes.sql | docker compose exec -T postgres psql -U interop -d interop
+```
+
+### Stop everything
+
+```bash
+docker compose down
+```
+
+---
+
+## How to Run Tests
+
+### Java tests (unit + integration with H2)
+
+```bash
+cd data-event-ai-caseware
+./mvnw test
+```
+
+On Windows:
+
+```cmd
+cd data-event-ai-caseware
+mvnw.cmd test
+```
+
+Tests include:
+- `HashUtilTest` — schema fingerprint determinism and SHA-256 validation
+- `JsonUtilTest` — JSON deserialization edge cases
+- `LakeHandlerTest` — checkpoint, JSONL output, overwrite semantics
+- `IngestionServiceTest` — dry run, real run, no-changes scenarios
+- `IngestionControllerTest` — endpoint responses via MockMvc
+- `SearchClientTest` — RestClient delegation
+- `IngestionDataLakeIntegrationTest` — full `@SpringBootTest` with H2 in-memory DB
+
+### Python ranker tests
+
+```bash
+cd data-event-ai-ranker
+poetry install --no-root
+poetry run pytest test_main.py -v
+```
+
+---
+
+## Example API Calls
+
+### Ingest (dry run) — count available rows without writing
+
+```bash
+curl -X POST "http://localhost:8080/ingest?dry_run=true"
+```
+
+Response:
+
+```json
+{
+  "runId": "a1b2c3d4-...",
+  "startedAt": "2026-03-20T10:00:00Z",
+  "finishedAt": "2026-03-20T10:00:01Z",
+  "customers": { "deltaRowCount": 30, "lakePaths": [], "schemaFingerprint": "3fda..." },
+  "cases": { "deltaRowCount": 200, "lakePaths": [], "schemaFingerprint": "001a..." },
+  "checkpointBefore": "1970-01-01T00:00:00Z",
+  "checkpointAfter": "1970-01-01T00:00:00Z"
+}
+```
+
+### Ingest (real run) — write JSONL to data lake and advance checkpoint
+
+```bash
+curl -X POST "http://localhost:8080/ingest?dry_run=false"
+```
+
+Response:
+
+```json
+{
+  "runId": "e5f6g7h8-...",
+  "startedAt": "2026-03-20T10:05:00Z",
+  "finishedAt": "2026-03-20T10:05:02Z",
+  "customers": { "deltaRowCount": 30, "lakePaths": ["./lake/customers/2026-03-20/data.jsonl"], "schemaFingerprint": "3fda..." },
+  "cases": { "deltaRowCount": 200, "lakePaths": ["./lake/cases/2026-03-20/data.jsonl"], "schemaFingerprint": "001a..." },
+  "checkpointBefore": "1970-01-01T00:00:00Z",
+  "checkpointAfter": "2026-03-20T10:05:02Z"
+}
+```
+
+### Search cases (via Python ranker)
+
+```bash
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "billing invoice overcharge", "top_k": 5}'
+```
+
+Response:
+
+```json
+{
+  "results": [
+    { "case_id": 1, "title": "Billing discrepancy on invoice #1001", "status": "open", "score": 0.8234 },
+    { "case_id": 6, "title": "Refund request for duplicate charge", "status": "open", "score": 0.3102 }
+  ]
+}
+```
+
+### Health check (ranker)
+
+```bash
+curl http://localhost:8000/health
+```
+
+```json
+{ "status": "ok", "indexed": 200 }
+```
+
+---
+
+## Important Assumptions
+
+- **Checkpoint is file-based** (`./state/checkpoint.json`). Deleting this file resets ingestion to epoch, causing a full re-ingest on the next run.
+- **Schema fingerprint validation** runs at startup. If entity fields are changed without updating the fingerprint values in `application.yaml`, the app will fail fast with `FingerprintSchemaNotValidException`.
+- **Lake files use overwrite semantics** per date partition. Re-running ingestion with the same data overwrites the file — no duplicates are created.
+- **Events file uses append semantics** (`events/events.jsonl`). Each ingestion run appends 2 JSONL lines (one per table).
+- **The ranker is best-effort**. If the Python sidecar is unavailable, ingestion still completes; only the `searchClient.refreshIndex()` call will fail silently (async).
+- **`db/changes.sql`** is intended to be applied manually between two ingestion runs to simulate incremental database changes.
+- **`ddl-auto: none`** in production config — Hibernate does not manage the schema. DDL is controlled by `db/init.sql`.
+- **The `dry_run` parameter is required** on `/ingest`. Omitting it returns HTTP 400.
+
